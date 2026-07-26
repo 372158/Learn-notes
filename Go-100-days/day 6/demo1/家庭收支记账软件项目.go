@@ -41,6 +41,7 @@ func main () {
 					fmt.Println("当前没有收支明细。。。来记录一笔吧！")
 				}
 				fmt.Println(details)
+				fmt.Println()
 		case "2":
 				fmt.Println("---------------登记收入---------------")
 				fmt.Println("本次收入金额：")
