@@ -26,7 +26,7 @@ type Article struct {
 	User    User   `json:"user,omitempty"` 
 }
 
-
+//这是练习的第十三天
 func main() {
 	dsn := "root:123456@tcp(127.0.0.1:3306)/test?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -49,7 +49,7 @@ func main() {
 				} `json:"articles"`
 			}
 			if err := c.ShouldBindJSON(&input); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "参数错误"})
+				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "参数错误"}) 
 				return
 			}
 			// 2.构建User 对象
