@@ -26,7 +26,7 @@ type Article struct {
 	User    User   `json:"user,omitempty"` 
 }
 
-//这是练习的第十三天
+//好离谱啊，今天竟然小格子不会变绿
 func main() {
 	dsn := "root:123456@tcp(127.0.0.1:3306)/test?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
