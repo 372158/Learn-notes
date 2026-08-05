@@ -1,0 +1,8 @@
+POST http://localhost:8080/api/v1/users/batch
+Content-Type: application/json
+
+[
+    {"name": "正常用户", "age": 18},
+    {"name": "异常用户", "age": "二十岁"}, 
+    {"name": "正常用户2", "age": 22}
+]
