@@ -1,0 +1,75 @@
+package main
+
+import (
+	"log"
+
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+
+	"blog/internal/handler" // 新增：导入 handler 包
+	"blog/model"            // 导入我们自己刚刚写的 model 包
+)
+
+func main() {
+
+	//---------- 1. 加载配置文件 ----------
+	viper.SetConfigName("config") // 配置文件名（不用写扩展名）
+	viper.SetConfigType("yaml")   // 配置文件类型
+	viper.AddConfigPath(".")      // 在当前目录下查找
+
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatalf("加载配置文件失败：%v", err)
+	}
+	log.Println("✅ 配置文件加载成功") // ✅ 改为了 Println
+	//----------------------------------------
+
+	//---------- 2. 连接数据库 ----------
+	//从配置里取 database.dsn 的值
+	dsn := viper.GetString("database.dsn")
+
+	//用 GORM 打开数据库连接
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("连接数据库失败： %v", err) // 如果连不上 Mysql, 程序直接退出
+	}
+	log.Println("✅ 数据库连接成功")
+
+	//----------------------------------------
+	//---------- 3. 自动迁移（移表） ----------
+	//检查数据库里有没有 users 表，没有就创建；有就检查字段是否匹配，不匹配就更新
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		log.Fatalf("数据库迁移失败： %v", err)
+	}
+	log.Println("✅ 数据库迁移完成（users 表已就绪）") // ✅ 改为了 Println
+	//----------------------------------------
+	//---------- 4. 创建用户处理器 ----------
+	userhandler := handler.NewUserHandler(db)
+
+	// 5. 创建一个 Gin 路由器
+	r := gin.Default()
+
+	// 6. 注册路由
+	//公共路由（不需要登录）
+	r.POST("/api/v1/users/register", userhandler.Register)
+	r.POST("/api/v1/users/login", userhandler.Login)
+
+	//健康检查
+	//定义一个路由：当用户访问 /ping 时，返回 JSON 数据
+	r.GET("/ping", func(ctx *gin.Context) {
+		ctx.JSON(200, gin.H{"msg": "pong"})
+	})
+
+	// 7. 启动服务器
+	//从配置中读取端口，如果没有则使用默认值 “:8080”
+	port := viper.GetString("server.port")
+	if port == "" {
+		port = ":8080"
+	}
+	log.Printf("✅ 服务器启动在 http://localhost%s\n", port)
+	if err := r.Run(port); err != nil {
+		log.Fatalf("启动服务器失败: %v", err)
+	}
+
+}

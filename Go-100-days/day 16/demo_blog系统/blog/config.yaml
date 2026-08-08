@@ -1,0 +1,9 @@
+server:
+  port:":8080"
+
+database:
+  dsn: "root:123456@tcp(127.0.0.1:3306)/test?charset=utf8mb4&parseTime=True&loc=Local"
+
+jwt:
+  secret: "your-super-secret-key-change-in-production"  # ← 新增
+  expire: 7200  # ← 新增：过期时间（秒），2小时
