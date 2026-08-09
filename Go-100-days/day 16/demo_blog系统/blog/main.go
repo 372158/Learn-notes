@@ -56,6 +56,10 @@ func main() {
 	r.POST("/api/v1/users/register", userhandler.Register)
 	r.POST("/api/v1/users/login", userhandler.Login)
 
+	// 文章公开接口
+	r.GET("/api/v1/articles", articleHandler.List)       //文章列表
+	r.GET("/api/v1/articles/:id", articleHandler.Detail) //文章详情
+
 	//健康检查(公开)
 	//定义一个路由：当用户访问 /ping 时，返回 JSON 数据
 	r.GET("/ping", func(ctx *gin.Context) {
@@ -67,7 +71,9 @@ func main() {
 	authGroup.Use(middleware.Auth()) //	应用 JWT 认证中间件
 	{
 		//	文章相关的接口（需要登录）
-		authGroup.POST("/articles", articleHandler.Create)
+		authGroup.POST("/articles", articleHandler.Create)       //创建文章
+		authGroup.PUT("/articles/:id", articleHandler.Updata)    //更新文章
+		authGroup.DELETE("/articles/:id", articleHandler.Delete) //删除文章
 		// 后续可以继续添加：GET /articles, PUT /articles/:id, DELETE /articles/:id 等
 
 	}
