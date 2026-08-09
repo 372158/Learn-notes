@@ -30,9 +30,9 @@ type RegisterRequest struct {
 }
 
 func (h *UserHandler) Register(c *gin.Context) {
+	// 1. 从请求体解析 JSON
 	var req RegisterRequest
 
-	// 1. 绑定 JSON
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code": 400,
@@ -100,7 +100,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	})
 }
 
-// ---------- 登录 ----------
+// ---------- 登录流程 ----------
 
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`

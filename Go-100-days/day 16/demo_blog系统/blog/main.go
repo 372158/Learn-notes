@@ -9,7 +9,8 @@ import (
 	"gorm.io/gorm"
 
 	"blog/internal/handler" // 新增：导入 handler 包
-	"blog/model"            // 导入我们自己刚刚写的 model 包
+	"blog/internal/middleware"
+	"blog/model" // 导入我们自己刚刚写的 model 包
 )
 
 func main() {
@@ -22,7 +23,6 @@ func main() {
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatalf("加载配置文件失败：%v", err)
 	}
-	log.Println("✅ 配置文件加载成功") // ✅ 改为了 Println
 	//----------------------------------------
 
 	//---------- 2. 连接数据库 ----------
@@ -39,7 +39,7 @@ func main() {
 	//----------------------------------------
 	//---------- 3. 自动迁移（移表） ----------
 	//检查数据库里有没有 users 表，没有就创建；有就检查字段是否匹配，不匹配就更新
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Article{}); err != nil {
 		log.Fatalf("数据库迁移失败： %v", err)
 	}
 	log.Println("✅ 数据库迁移完成（users 表已就绪）") // ✅ 改为了 Println
@@ -47,19 +47,30 @@ func main() {
 	//---------- 4. 创建用户处理器 ----------
 	userhandler := handler.NewUserHandler(db)
 
-	// 5. 创建一个 Gin 路由器
+	// 5. 创建一个 Gin 路由器 和 一个 handlers
 	r := gin.Default()
+	articleHandler := handler.NewArticleHandler(db)
 
 	// 6. 注册路由
 	//公共路由（不需要登录）
 	r.POST("/api/v1/users/register", userhandler.Register)
 	r.POST("/api/v1/users/login", userhandler.Login)
 
-	//健康检查
+	//健康检查(公开)
 	//定义一个路由：当用户访问 /ping 时，返回 JSON 数据
 	r.GET("/ping", func(ctx *gin.Context) {
 		ctx.JSON(200, gin.H{"msg": "pong"})
 	})
+
+	//-------- 需要登录的路由组 --------
+	authGroup := r.Group("api/v1")
+	authGroup.Use(middleware.Auth()) //	应用 JWT 认证中间件
+	{
+		//	文章相关的接口（需要登录）
+		authGroup.POST("/articles", articleHandler.Create)
+		// 后续可以继续添加：GET /articles, PUT /articles/:id, DELETE /articles/:id 等
+
+	}
 
 	// 7. 启动服务器
 	//从配置中读取端口，如果没有则使用默认值 “:8080”
