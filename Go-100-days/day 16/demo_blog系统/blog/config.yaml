@@ -7,3 +7,6 @@ database:
 jwt:
   secret: your-super-secret-key-change-in-production  # ← 新增
   expire: 7200  # ← 新增：过期时间（秒），2小时
+
+redis:
+  addr: "localhost:6379"

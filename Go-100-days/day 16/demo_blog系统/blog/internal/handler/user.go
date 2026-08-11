@@ -7,9 +7,11 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"go.uber.org/zap"
 
 	"blog/internal/middleware"
 	"blog/model"
+	"blog/pkg/logger"
 )
 
 // ---------- UserHandler ----------
@@ -34,6 +36,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code": 400,
 			"msg":  "参数错误: " + err.Error(),
@@ -44,6 +47,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	// 2. 检查用户名是否已被占用
 	var existUser model.User
 	if err := h.DB.Where("username = ?", req.Username).First(&existUser).Error; err == nil {
+		logger.Log.Warn("用户名已被注册", zap.String("username", req.Username))
 		c.JSON(http.StatusConflict, gin.H{
 			"code": 409,
 			"msg":  "用户名已被注册",
@@ -85,6 +89,11 @@ func (h *UserHandler) Register(c *gin.Context) {
 		})
 		return
 	}
+	
+	logger.Log.Info("用户注册成功",
+		zap.Uint("user_id", user.ID),
+		zap.String("username", user.Username),
+	)
 
 	// 6. 返回结果（不返回密码）
 	c.JSON(http.StatusCreated, gin.H{

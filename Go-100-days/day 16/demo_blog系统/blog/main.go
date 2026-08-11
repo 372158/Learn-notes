@@ -5,15 +5,25 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
-	"blog/internal/handler" // 新增：导入 handler 包
+	"blog/internal/handler" // 导入 handler 包
 	"blog/internal/middleware"
-	"blog/model" // 导入我们自己刚刚写的 model 包
+	"blog/model"      // 导入 model 包
+	"blog/pkg/cache"  // 导入 Redis
+	"blog/pkg/logger" // 导入 Zap
 )
 
 func main() {
+
+	//---------- 0. 初始化日志 ----------
+	if err := logger.Init(); err != nil {
+		log.Fatalf("初始化日志失败: %v", err)
+	}
+	defer logger.Sync() // 程序退出前刷新日志缓冲
+	//-----------------------------------
 
 	//---------- 1. 加载配置文件 ----------
 	viper.SetConfigName("config") // 配置文件名（不用写扩展名）
@@ -21,7 +31,7 @@ func main() {
 	viper.AddConfigPath(".")      // 在当前目录下查找
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalf("加载配置文件失败：%v", err)
+		logger.Log.Fatal("加载配置文件失败", zap.String("error", err.Error()))
 	}
 	//----------------------------------------
 
@@ -32,17 +42,27 @@ func main() {
 	//用 GORM 打开数据库连接
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("连接数据库失败： %v", err) // 如果连不上 Mysql, 程序直接退出
+		logger.Log.Fatal("连接数据库失败", zap.String("error", err.Error())) // 如果连不上 Mysql, 程序直接退出
 	}
-	log.Println("✅ 数据库连接成功")
+	logger.Log.Info("✅ 数据库连接成功")
 
-	//----------------------------------------
+	// ---------- 2.5 连接 Redis ----------
+	redisAddr := viper.GetString("redis.addr")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379" //默认值
+	}
+
+	if err := cache.InitRedis(redisAddr, "", 0); err != nil {
+		logger.Log.Fatal("连接 Redis 失败", zap.String("error", err.Error()))
+	}
+	logger.Log.Info("✅ Redis 连接成功")
+
 	//---------- 3. 自动迁移（移表） ----------
 	//检查数据库里有没有 users 表，没有就创建；有就检查字段是否匹配，不匹配就更新
 	if err := db.AutoMigrate(&model.User{}, &model.Article{}); err != nil {
 		log.Fatalf("数据库迁移失败： %v", err)
 	}
-	log.Println("✅ 数据库迁移完成（users 表已就绪）") // ✅ 改为了 Println
+	logger.Log.Info("✅ 数据库迁移完成（users 表已就绪）") // ✅ 改为了 Println
 	//----------------------------------------
 	//---------- 4. 创建用户处理器 ----------
 	userhandler := handler.NewUserHandler(db)
@@ -72,7 +92,7 @@ func main() {
 	{
 		//	文章相关的接口（需要登录）
 		authGroup.POST("/articles", articleHandler.Create)       //创建文章
-		authGroup.PUT("/articles/:id", articleHandler.Updata)    //更新文章
+		authGroup.PUT("/articles/:id", articleHandler.Update)    //更新文章
 		authGroup.DELETE("/articles/:id", articleHandler.Delete) //删除文章
 		// 后续可以继续添加：GET /articles, PUT /articles/:id, DELETE /articles/:id 等
 
