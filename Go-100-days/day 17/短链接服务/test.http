@@ -1,0 +1,9 @@
+### 1. 生成短链接
+POST http://localhost:8080/api/shorten
+Content-Type: application/json
+
+{
+    "url": "https://www.baidu.com"
+}
+### 2. 访问短链接（查看跳转）
+GET http://localhost:8080/f9751d
