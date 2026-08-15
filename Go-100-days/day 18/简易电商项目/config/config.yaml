@@ -1,0 +1,31 @@
+# config.yaml 配置文件
+# 学习要点：YAML 格式配置文件，使用缩进表示层级关系（注意：只能用空格，不能用 Tab）
+#
+# 为什么用配置文件：把可变参数（数据库密码、端口等）和代码分离，
+# 修改配置不需要重新编译代码，方便不同环境（开发/测试/生产）切换
+
+# 服务配置
+app:
+  name: "simple-ecommerce"     # 应用名称
+  port: 8080                   # 服务监听端口
+
+# MySQL 数据库配置
+mysql:
+  host: "127.0.0.1"            # 数据库地址（本地用 127.0.0.1，Docker 中用容器名 mysql）
+  port: 3306                   # 数据库端口
+  user: "root"                 # 数据库用户名
+  password: "123456"           # 数据库密码
+  dbname: "shop"               # 数据库名
+  max_idle_conns: 10           # 连接池最大空闲连接数
+  max_open_conns: 100          # 连接池最大打开连接数
+
+# Redis 配置
+redis:
+  addr: "127.0.0.1:6379"       # Redis 地址
+  password: ""                 # Redis 密码（默认空）
+  db: 0                        # Redis 数据库编号（0-15）
+
+# JWT 配置
+jwt:
+  secret: "shop-secret-key-2024"  # JWT 签名密钥（生产环境要用复杂随机字符串）
+  expire: 24                      # token 过期时间（小时）

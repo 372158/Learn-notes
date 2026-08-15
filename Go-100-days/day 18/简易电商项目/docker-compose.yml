@@ -1,0 +1,72 @@
+# docker-compose.yml
+# Docker Compose 容器编排配置文件
+# 学习要点：用一个文件定义和运行多个容器（MySQL + Redis + App）
+#
+# 常用命令：
+#   docker-compose up -d              后台启动所有服务
+#   docker-compose up -d mysql redis  只启动 mysql 和 redis
+#   docker-compose down               停止并删除容器
+#   docker-compose logs -f app        查看 app 日志
+#   docker-compose ps                 查看服务状态
+#
+# 说明：开发时建议只用 docker-compose 启动 mysql 和 redis，
+#       应用本地 go run main.go 调试更方便
+
+version: "3.8"
+
+services:
+  # MySQL 数据库服务
+  mysql:
+    image: mysql:8.0                     # 使用 MySQL 8.0 镜像
+    container_name: shop-mysql           # 容器名称
+    restart: always                      # 容器异常时自动重启
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"      # root 密码
+      MYSQL_DATABASE: "shop"             # 自动创建的数据库
+    ports:
+      - "3306:3306"                      # 端口映射 宿主机:容器
+    volumes:
+      - mysql_data:/var/lib/mysql        # 数据持久化，避免容器删除数据丢失
+    # 学习要点：healthcheck 健康检查，用于判断服务是否就绪
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p123456"]
+      interval: 10s     # 检查间隔
+      timeout: 5s       # 超时时间
+      retries: 5        # 重试次数
+
+  # Redis 缓存服务
+  redis:
+    image: redis:7                       # 使用 Redis 7 镜像
+    container_name: shop-redis           # 容器名称
+    restart: always
+    ports:
+      - "6379:6379"                      # 端口映射
+    volumes:
+      - redis_data:/data                 # 数据持久化
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 应用服务（可选，开发时建议本地运行）
+  app:
+    build: .                             # 用当前目录的 Dockerfile 构建
+    container_name: shop-app             # 容器名称
+    restart: always
+    ports:
+      - "8080:8080"                      # 应用端口
+    depends_on:                          # 依赖的服务（会先启动它们）
+      mysql:
+        condition: service_healthy       # 等 mysql 健康检查通过
+      redis:
+        condition: service_healthy       # 等 redis 健康检查通过
+    # 学习要点：Docker 容器间通信用服务名作为主机名
+    # 所以这里覆盖配置，把 host 改成容器名 mysql、redis
+    environment:
+      - APP_PORT=8080
+
+# 学习要点：volumes 命名卷，由 Docker 管理，持久化数据
+volumes:
+  mysql_data:
+  redis_data:

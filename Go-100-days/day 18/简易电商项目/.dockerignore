@@ -1,0 +1,24 @@
+# .dockerignore
+# 学习要点：构建镜像时忽略的文件，类似 .gitignore
+# 减小构建上下文体积，加速构建
+
+# Git
+.git
+.gitignore
+
+# 文档
+*.md
+.trae
+
+# 构建产物
+app
+*.exe
+
+# IDE
+.idea
+.vscode
+
+# Docker（避免循环）
+Dockerfile
+docker-compose.yml
+.dockerignore
