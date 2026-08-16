@@ -1,0 +1,8 @@
+.git
+.gitignore
+*.md
+*.log
+test.http
+.idea
+.vscode
+tmp/
