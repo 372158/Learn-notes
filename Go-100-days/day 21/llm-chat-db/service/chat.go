@@ -6,9 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"llm-chat-db/models"
 )
@@ -16,36 +19,74 @@ import (
 // ChatService 掌管"聊天"的业务规则
 type ChatService struct {
 	DB     *gorm.DB
+	Redis  *redis.Client
 	APIKey string
 	APIURL string
 	Model  string
 }
 
-// NewChatService 构造 ChatService（依赖注入：外部把 db、key 等传进来）
-func NewChatService(g *gorm.DB, apiKey, apiURL, model string) *ChatService {
-	return &ChatService{DB: g, APIKey: apiKey, APIURL: apiURL, Model: model}
+// NewChatService 构造 ChatService（依赖注入：外部把 db、redis、key 等传进来）
+func NewChatService(g *gorm.DB, rdb *redis.Client, apiKey, apiURL, model string) *ChatService {
+	return &ChatService{DB: g, Redis: rdb, APIKey: apiKey, APIURL: apiURL, Model: model}
+}
+
+// cacheKey 每个会话一个缓存 key，命名规范：对象:标识
+func cacheKey(sid string) string {
+	return "history:" + sid
 }
 
 // BuildMessages 查历史 + 拼当前问题（多轮记忆）
 func (s *ChatService) BuildMessages(sid, q string) []map[string]string {
-	var history []models.Message
-	s.DB.Where("session_id = ?", sid).Order("created_at asc").Find(&history)
-
-	messages := make([]map[string]string, 0, len(history)+1)
-	start := 0
-	if len(history) > 20 {
-		start = len(history) - 20
-	}
-	for _, m := range history[start:] {
-		messages = append(messages, map[string]string{"role": m.Role, "content": m.Content})
-	}
+	messages := s.loadHistory(sid) // 从缓存或库拿历史
 	messages = append(messages, map[string]string{"role": "user", "content": q})
 	return messages
 }
 
-// SaveMessage 存一条消息
+// loadHistory cache-aside：先查缓存 → miss 查库并回填；缓存出错则兜底查库
+func (s *ChatService) loadHistory(sid string) []map[string]string {
+	key := cacheKey(sid)
+	cached, err := s.Redis.Get(context.Background(), key).Result()
+	if err == redis.Nil { // 缓存未命中
+		msgs := s.queryHistory(sid)
+		if b, e := json.Marshal(msgs); e == nil {
+			s.Redis.Set(context.Background(), key, b, 30*time.Second) // 回填 + 过期
+		}
+		fmt.Println("[缓存] miss，查库并回填", len(msgs), "条")
+		return msgs
+	}
+	if err != nil { // 缓存本身出错，别拖垮请求，兜底查库
+		log.Printf("读取缓存失败(%s): %v", key, err)
+		return s.queryHistory(sid)
+	}
+	// 缓存命中
+	var msgs []map[string]string
+	if json.Unmarshal([]byte(cached), &msgs) != nil {
+		return s.queryHistory(sid)
+	}
+	fmt.Println("[缓存] 命中", len(msgs), "条，没查库")
+	return msgs
+}
+
+// queryHistory 从 MySQL 查该会话最近 20 条历史（原始实现）
+func (s *ChatService) queryHistory(sid string) []map[string]string {
+	var history []models.Message
+	s.DB.Where("session_id = ?", sid).Order("created_at asc").Find(&history)
+	start := 0
+	if len(history) > 20 {
+		start = len(history) - 20
+	}
+	msgs := make([]map[string]string, 0, len(history)-start)
+	for _, m := range history[start:] {
+		msgs = append(msgs, map[string]string{"role": m.Role, "content": m.Content})
+	}
+	fmt.Println("[DB] 查库，共", len(msgs), "条")
+	return msgs
+}
+
+// SaveMessage 存一条消息；写入后失效缓存，保证下次不会读到旧数据
 func (s *ChatService) SaveMessage(sid, role, content string) {
 	s.DB.Create(&models.Message{SessionID: sid, Role: role, Content: content})
+	s.Redis.Del(context.Background(), cacheKey(sid))
 }
 
 // StreamChat 调用 LLM，逐 chunk 通过回调 fn 返回；返回错误则中止
