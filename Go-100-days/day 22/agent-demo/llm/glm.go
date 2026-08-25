@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"agent-demo/tools"
@@ -12,22 +13,37 @@ import (
 
 // glmMessage 传给 glm 的单条消息结构
 type glmMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	ToolCalls  []glmToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
 }
 
 type glmChatRequest struct {
-	Model   string       `json:"model"`
-	Message []glmMessage `json:"messages"`
+	Model   string             `json:"model"`
+	Message []glmMessage       `json:"messages"`
+	Tools   []tools.ToolSchema `json:"tools,omitempty"`
 }
 
 type glmChatResponse struct {
+	Error   *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 	Choices []struct {
 		Message glmMessage `json:"message"`
 	} `json:"choices"`
 }
 
-// GLM 用 glm-4-flash 实现 Model 接口
+// glmToolCall 模型返回/需要回传的一个工具调用
+type glmToolCall struct {
+	Type     string `json:"type"` // 固定 "function"
+	ID       string `json:"id"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
 type GLM struct {
 	APIKey string
 	APIURL string
@@ -38,24 +54,36 @@ func NewGLM(apiKey, apiURL, model string) *GLM {
 	return &GLM{APIKey: apiKey, APIURL: apiURL, Model: model}
 }
 
-// Chat 实现 llm.Model 接口（只处理文字回复，工具调用留 A4）
-func (g *GLM) Chat(ctx context.Context, message []Message, _ []tools.ToolSchema) (*Completion, error) {
-	// 空A：把 []llm.Message 逐条转成 []glmMessage
+// Chat 实现 llm.Model 接口（含工具调用）
+func (g *GLM) Chat(ctx context.Context, message []Message, toolsSchemas []tools.ToolSchema) (*Completion, error) {
 	msgs := make([]glmMessage, 0, len(message))
 	for _, m := range message {
-		msgs = append(msgs, glmMessage{Role: m.Role, Content: m.Content})
+		gm := glmMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
+		if len(m.AssistantToolCalls) > 0 {
+			for _, tc := range m.AssistantToolCalls {
+				gm.ToolCalls = append(gm.ToolCalls, glmToolCall{
+					Type: "function",
+					ID:   tc.ID,
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: tc.Name, Arguments: tc.Arguments},
+				})
+			}
+		}
+		msgs = append(msgs, gm)
 	}
 
 	body, _ := json.Marshal(glmChatRequest{
 		Model:   g.Model,
 		Message: msgs,
+		Tools:   toolsSchemas,
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", g.APIURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("构建请求：%w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+g.APIKey)
 
@@ -65,8 +93,29 @@ func (g *GLM) Chat(ctx context.Context, message []Message, _ []tools.ToolSchema)
 	}
 	defer resp.Body.Close()
 
-	// 空C：解码响应，从 choices[0].message.content 取人话
+	raw, _ := io.ReadAll(resp.Body)
 	var out glmChatResponse
-	json.NewDecoder(resp.Body).Decode(&out)
-	return &Completion{Content: out.Choices[0].Message.Content}, nil
+	if jerr := json.Unmarshal(raw, &out); jerr != nil {
+		return nil, fmt.Errorf("响应解析失败: %v，原文=%s", jerr, string(raw))
+	}
+	if out.Error != nil {
+		return nil, fmt.Errorf("glm 返回错误: %s", out.Error.Message)
+	}
+	if len(out.Choices) == 0 {
+		return nil, fmt.Errorf("glm 未返回 choices，原文=%s", string(raw))
+	}
+
+	msg := out.Choices[0].Message
+	if len(msg.ToolCalls) > 0 {
+		tcs := make([]tools.ToolCall, 0, len(msg.ToolCalls))
+		for _, tc := range msg.ToolCalls {
+			tcs = append(tcs, tools.ToolCall{
+				ID:        tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			})
+		}
+		return &Completion{ToolCalls: tcs}, nil
+	}
+	return &Completion{Content: msg.Content}, nil
 }

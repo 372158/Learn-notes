@@ -2,7 +2,11 @@ module agent-demo
 
 go 1.26.5
 
-require github.com/gin-gonic/gin v1.12.0
+require (
+	github.com/gin-gonic/gin v1.12.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
+)
+
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
