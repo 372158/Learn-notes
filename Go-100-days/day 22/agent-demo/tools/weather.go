@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
@@ -23,8 +22,8 @@ var Weather = Tool{
 	Description: "查询指定城市的当前天气。可查城市：北京、上海、广州。传入 city 字段。",
 	Call: func(argsJSON string) (string, error) {
 		var args weatherArgs
-		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-			return "", fmt.Errorf("参数解析失败: %w", err)
+		if err := ParseArgs(argsJSON, &args); err != nil {
+			return "", err
 		}
 		v, ok := cityWeather[args.City]
 		if !ok {

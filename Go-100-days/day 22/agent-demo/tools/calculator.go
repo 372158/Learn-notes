@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,8 +17,8 @@ var Calc = Tool{
 	Description: "计算一个数学表达式（只支持 + - * / 和括号与数字），如 12+34、3*(4-1)、10/4。传入 expr 字段。",
 	Call: func(argsJSON string) (string, error) {
 		var args calcArgs
-		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-			return "", fmt.Errorf("参数解析失败: %w", err)
+		if err := ParseArgs(argsJSON, &args); err != nil {
+			return "", err
 		}
 		if strings.TrimSpace(args.Expr) == "" {
 			return "", fmt.Errorf("表达式为空")
