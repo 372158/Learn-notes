@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -12,36 +13,35 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// 代码里指定模型名（环境变量 OPENAI_MODEL 不设时的可靠做法）
+	llm, err := openai.New()
 
-	llm, err := openai.New(openai.WithModel("glm-4-flash"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 构造消息：system + human 各一条
+	// 1. 拼消息：system 明确要求 JSON 格式输出 objective
 	msgs := []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, "你是一个简洁的助手，回答不要吵过两句话。"),
-		llms.TextParts(llms.ChatMessageTypeHuman, "用一句话介绍 GO 语言"),
+		llms.TextParts(llms.ChatMessageTypeSystem, "你是翻译员。输出严格的 JSON:{\"translation\":\"译文\",\"confidence\":0到1}，不要输出其他文字。"),
+		llms.TextParts(llms.ChatMessageTypeHuman, "The quick brown fox jumps over the lazy dog."),
 	}
 
-	resp1, err := llm.GenerateContent(ctx, msgs)
+	//2. 带 JSON 模式调用
+	resp, err := llm.GenerateContent(ctx, msgs, llms.WithJSONMode())
 	if err != nil {
 		log.Fatal(err)
 	}
-	answer1 := resp1.Choices[0].Content
-	fmt.Println("第一轮：", answer1)
+	raw := resp.Choices[0].Content
+	fmt.Println("模型原始输出：", raw)
 
-	// 追加历史
-	msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeAI, "你是一个简洁的助手，回答不要吵过两句话。"))
-	msgs = append(msgs, llms.TextParts(llms.ChatMessageTypeHuman, "“Go 和 Python 比有什么优势"))
-
-	resp2, err := llm.GenerateContent(ctx, msgs)
-	if err != nil {
-		log.Fatal(err)
+	// 3. 自己解析 + 兜底（这是 B2 的 parseAnswer 精神）
+	var out struct {
+		Translation string  `json:"translation"`
+		Confidence  float64 `json:"confidence"`
 	}
 
-	ansewer2 := resp2.Choices[0].Content
-	fmt.Println("第二轮：", ansewer2)
-
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		fmt.Println("⚠️ 解析失败，可能需要剥围栏:", err)
+		return
+	}
+	fmt.Printf("译文=%s 置信度=%.2f\n", out.Translation, out.Confidence)
 }
